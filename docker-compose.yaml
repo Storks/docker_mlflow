@@ -21,7 +21,7 @@ services:
       timeout: 20s
       retries: 3
     volumes:
-      - ./Docker/minio/:/data
+      - minio:/data
 
   nginx:
     image: nginx:1.19.2-alpine
@@ -37,6 +37,58 @@ services:
     depends_on:
       - minio
 
+  db:
+    container_name: postgres
+    image: postgres:14.3-bullseye
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGDATA: /data/postgres
+    volumes:
+      - postgres:/data/postgres
+    expose:
+      - "5432"
+    networks:
+      - postgres
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:2022-05-31-1
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    volumes:
+      - pgadmin:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - postgres
+
+  mlflow:
+    restart: always
+    build: ./Docker/mlflow_image
+    container_name: mlflow_server
+    ports:
+      - "5000:5000"
+    networks:
+      - postgres
+      - s3
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - MLFLOW_S3_ENDPOINT_URL=http://nginx:9000
+    command: mlflow server --backend-store-uri postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB} --default-artifact-root s3://${AWS_S3_BUCKET}/ --host 0.0.0.0
+
 networks:
   s3:
     driver: bridge
+  postgres:
+    driver: bridge
+
+volumes:
+  postgres:
+  pgadmin:
+  minio:
